@@ -1,3 +1,4 @@
+import * as crypto from "crypto";
 import * as cdk from "aws-cdk-lib";
 import * as amplify from "aws-cdk-lib/aws-amplify";
 import { Construct } from "constructs";
@@ -6,22 +7,32 @@ export class ClawbotWebWidgetStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
+    // 凭证：首次部署自动生成，后续通过 -c channelId=xxx -c clientSecret=xxx 传入复用
+    const clientId = this.node.tryGetContext('channelId') || crypto.randomUUID();
+    const clientSecret = this.node.tryGetContext('clientSecret') || crypto.randomBytes(32).toString('hex');
+
+    // nanoclaw WebSocket URL 从 CDK context 读取（必填）
+    const nanoclawWsUrl = this.node.tryGetContext('nanoclawWsUrl');
+    if (!nanoclawWsUrl) {
+      throw new Error('Required: -c nanoclawWsUrl=wss://your-nanoclaw-domain.com');
+    }
+
     // Amplify Hosting App (manual deployment / Git-based)
-    const amplifyApp = new amplify.CfnApp(this, "ClawbotWidgetAmplify", {
+    const app = new amplify.CfnApp(this, "ClawbotWidgetAmplify", {
       name: "clawbot-web-widget",
       platform: "WEB_COMPUTE",
       environmentVariables: [
         {
           name: "VITE_NANOCLAW_WS_URL",
-          value: this.node.tryGetContext("nanoclaw_ws_url") ?? "wss://api.nanoclaw.com",
+          value: nanoclawWsUrl,
         },
         {
           name: "VITE_CHANNEL_ID",
-          value: this.node.tryGetContext("channel_id") ?? "demo-channel",
+          value: clientId,
         },
         {
           name: "VITE_CLIENT_SECRET",
-          value: this.node.tryGetContext("client_secret") ?? "change-me-secret",
+          value: clientSecret,
         },
       ],
       buildSpec: JSON.stringify({
@@ -41,18 +52,36 @@ export class ClawbotWebWidgetStack extends cdk.Stack {
     });
 
     const branch = new amplify.CfnBranch(this, "MainBranch", {
-      appId: amplifyApp.attrAppId,
+      appId: app.attrAppId,
       branchName: "main",
       enableAutoBuild: true,
     });
 
-    new cdk.CfnOutput(this, "AmplifyAppId", {
-      value: amplifyApp.attrAppId,
+    new cdk.CfnOutput(this, 'WidgetUrl', {
+      value: `https://main.${app.attrAppId}.amplifyapp.com`,
+      description: 'Chat widget URL',
     });
 
-    new cdk.CfnOutput(this, "AmplifyAppUrl", {
-      value: `https://main.${amplifyApp.attrDefaultDomain}`,
-      description: "Amplify default URL for the widget",
+    new cdk.CfnOutput(this, 'ChannelId', {
+      value: clientId,
+      description: 'Web Widget Channel ID — register this in NanoClaw console',
+    });
+
+    // DEMO-LEVEL: CfnOutput exposes secret so user can register it in NanoClaw.
+    // For production, store in Secrets Manager and retrieve out-of-band.
+    new cdk.CfnOutput(this, 'ClientSecret', {
+      value: clientSecret,
+      description: 'SENSITIVE: Web Widget Client Secret — save it and register in NanoClaw. Only shown once in CDK output.',
+    });
+
+    new cdk.CfnOutput(this, 'NanoclawWsUrl', {
+      value: nanoclawWsUrl,
+      description: 'NanoClaw WebSocket endpoint',
+    });
+
+    new cdk.CfnOutput(this, 'EmbedCode', {
+      value: `<iframe src="https://main.${app.attrAppId}.amplifyapp.com?userId=USER_ID" style="width:400px;height:600px;border:none;" />`,
+      description: 'Embed code (replace USER_ID)',
     });
   }
 }
