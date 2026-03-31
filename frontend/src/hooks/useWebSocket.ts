@@ -201,15 +201,39 @@ export function useWebSocket(userId: string) {
   // ── Public API ──
 
   const sendMessage = useCallback(
-    (text: string, attachments?: Attachment[]) => {
-      // Optimistic local message
-      addMessage({
-        id: crypto.randomUUID(),
-        kind: "text",
-        sender: "user",
-        text,
-        timestamp: new Date().toISOString(),
-      });
+    (text: string, attachments?: Attachment[], localUrls?: Map<string, string>) => {
+      const now = new Date().toISOString();
+
+      // Optimistic text message (only if there's actual text)
+      if (text) {
+        addMessage({
+          id: crypto.randomUUID(),
+          kind: "text",
+          sender: "user",
+          text,
+          timestamp: now,
+        });
+      }
+
+      // Optimistic file/image messages for each attachment
+      if (attachments?.length) {
+        for (const att of attachments) {
+          const isImage = att.mimeType.startsWith("image/");
+          // Prefer local blob URL, fall back to base64 data URL
+          const url = localUrls?.get(att.fileName)
+            ?? (att.data ? `data:${att.mimeType};base64,${att.data}` : undefined);
+          addMessage({
+            id: crypto.randomUUID(),
+            kind: isImage ? "image" : "file",
+            sender: "user",
+            url,
+            fileName: att.fileName,
+            mimeType: att.mimeType,
+            timestamp: now,
+          });
+        }
+      }
+
       send({ action: "sendMessage", text, attachments });
     },
     [addMessage, send],

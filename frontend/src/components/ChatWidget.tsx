@@ -19,12 +19,12 @@ export function ChatWidget({ userId }: Props) {
   const [minimized, setMinimized] = useState(false);
   const [preview, setPreview] = useState<{ url: string; fileName: string } | null>(null);
 
-  const handleSend = (text: string) => {
-    sendMessage(text);
-  };
-
-  const handleFiles = (files: File[]) => {
-    uploadAndSend(files);
+  const handleSend = (text: string, files: File[]) => {
+    if (files.length > 0) {
+      uploadAndSend(files, text);
+    } else if (text) {
+      sendMessage(text);
+    }
   };
 
   const handleImageClick = (url: string, fileName: string) => {
@@ -76,7 +76,6 @@ export function ChatWidget({ userId }: Props) {
         {/* Input */}
         <InputBar
           onSend={handleSend}
-          onFiles={handleFiles}
           disabled={connectionState !== "connected"}
         />
       </div>

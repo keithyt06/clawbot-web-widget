@@ -3,7 +3,7 @@ import type { Attachment } from "../types";
 import { config } from "../lib/config";
 
 interface UseFileUploadOptions {
-  sendMessage: (text: string, attachments?: Attachment[]) => void;
+  sendMessage: (text: string, attachments?: Attachment[], localUrls?: Map<string, string>) => void;
   requestUploadUrl: (
     fileName: string,
     mimeType: string,
@@ -16,7 +16,6 @@ function readFileAsBase64(file: File): Promise<string> {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
-      // Strip data URL prefix: "data:...;base64,"
       resolve(result.split(",")[1]);
     };
     reader.onerror = reject;
@@ -28,14 +27,19 @@ export function useFileUpload({ sendMessage, requestUploadUrl }: UseFileUploadOp
   const uploadAndSend = useCallback(
     async (files: File[], text = "") => {
       const attachments: Attachment[] = [];
+      // Map fileName → local blob URL for immediate preview
+      const localUrls = new Map<string, string>();
 
-      const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+      const MAX_FILE_SIZE = 50 * 1024 * 1024;
       for (const file of files) {
         if (file.size > MAX_FILE_SIZE) {
           throw new Error(`File "${file.name}" exceeds the 50 MB size limit.`);
         }
+
+        // Create local preview URL for all files
+        localUrls.set(file.name, URL.createObjectURL(file));
+
         if (file.size <= config.inlineThreshold) {
-          // ── Small file: inline base64 ──
           const data = await readFileAsBase64(file);
           attachments.push({
             fileName: file.name,
@@ -44,7 +48,6 @@ export function useFileUpload({ sendMessage, requestUploadUrl }: UseFileUploadOp
             data,
           });
         } else {
-          // ── Large file: presigned PUT → S3 ──
           const { uploadUrl, s3Key } = await requestUploadUrl(
             file.name,
             file.type || "application/octet-stream",
@@ -69,7 +72,7 @@ export function useFileUpload({ sendMessage, requestUploadUrl }: UseFileUploadOp
         }
       }
 
-      sendMessage(text, attachments);
+      sendMessage(text, attachments, localUrls);
     },
     [sendMessage, requestUploadUrl],
   );

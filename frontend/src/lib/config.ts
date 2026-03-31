@@ -9,5 +9,5 @@ export const config = {
   clientSecret: import.meta.env.VITE_CLIENT_SECRET as string ?? "change-me-secret",
 
   /** Max file size for inline base64 (bytes) */
-  inlineThreshold: 256 * 1024, // 256 KB
+  inlineThreshold: 5 * 1024 * 1024, // 5 MB
 } as const;
